@@ -1,61 +1,49 @@
-from sqlite3 import Connection, Row
+from sqlalchemy import exists
+from sqlalchemy.orm import Session
 
+from bot.converters import (
+    message_model_to_message_entity,
+    message_entity_to_message_model,
+)
 from bot.entities.chat_message import ChatMessage
+from bot.models.message import MessageOrmModel
 
 
 class ChatRepository:
-    def __init__(self, connection: Connection) -> None:
-        self.connection = connection
-        self.cursor = connection.cursor()
-        self.cursor.row_factory = Row
+    def __init__(self, session: Session) -> None:
+        self.session = session
 
-    def all_messages(self) -> list[ChatMessage]:
-        stmt = "SELECT * FROM ChatMessage"
+    def all(self) -> list[ChatMessage]:
+        messages = self.session.query(MessageOrmModel).all()
 
-        rows = self.cursor.execute(stmt)
+        converted = map(message_model_to_message_entity, messages)
 
-        return [
-            ChatMessage(
-                role=row["role"],
-                content=row["content"],
-            )
-            for row in rows.fetchall()
-        ]
+        return list(converted)
 
-    def all_user_messages(self, user_number: str) -> list[ChatMessage]:
-        stmt = "SELECT * FROM ChatMessage WHERE user_number = ?"
+    def filter(self, user_id: str) -> list[ChatMessage]:
+        messages = (
+            self.session.query(MessageOrmModel)
+            .where(MessageOrmModel.user_id == user_id)
+            .all()
+        )
 
-        rows = self.cursor.execute(stmt, (user_number,))
+        converted = map(message_model_to_message_entity, messages)
 
-        return [
-            ChatMessage(
-                role=row["role"],
-                content=row["content"],
-            )
-            for row in rows.fetchall()
-        ]
+        return list(converted)
 
-    def add_user_message(self, user_number: str, message: ChatMessage) -> None:
-        stmt = "INSERT INTO ChatMessage (user_number, role, content) VALUES (?, ?, ?)"
+    def add(self, message: ChatMessage) -> None:
+        message_orm_model = message_entity_to_message_model(message)
 
-        self.cursor.execute(stmt, (user_number, message.role, message.content))
+        self.session.add(message_orm_model)
 
-    def exists_user_messages(self, user_number: str) -> bool:
-        stmt = "SELECT * FROM ChatMessage WHERE user_number = ? LIMIT 1"
+    def exists(self, user_id: str) -> bool:
+        return self.session.scalar(
+            exists().where(MessageOrmModel.user_id == user_id).select()
+        )
 
-        row = self.cursor.execute(stmt, (user_number,))
+    def delete_where(self, user_id: str) -> None:
+        if self.exists(user_id):
+            self.session.query(MessageOrmModel).delete()
 
-        return bool(row.fetchone())
-
-    def delete_user_messages(self, user_number: str) -> None:
-        if self.exists_user_messages(user_number):
-            stmt = "DELETE FROM ChatMessage WHERE user_number = ?"
-
-            self.cursor.execute(stmt, (user_number,))
-
-    def delete_all_messages(self) -> None:
-        self.cursor.execute("DELETE FROM ChatMessage")
-
-    def __del__(self) -> None:
-        self.cursor.close()
-        self.connection.close()
+    def delete_all(self) -> None:
+        self.session.query(MessageOrmModel).delete()

@@ -1,55 +1,44 @@
-from sqlite3 import Connection, IntegrityError
-from sqlite3 import Row
+from sqlalchemy.orm import Session
+from sqlalchemy.sql import exists
 
+from bot.converters import user_model_to_user_entity, user_entity_to_user_model
 from bot.entities.user import User
+from bot.models.user import UserOrmModel
 
 
 class UserRepository:
-    def __init__(self, connection: Connection) -> None:
-        self.connection = connection
-        self.cursor = connection.cursor()
-        self.cursor.row_factory = Row
+    def __init__(self, session: Session) -> None:
+        self.session = session
 
     def all(self) -> list[User]:
-        stmt = "SELECT * FROM User"
+        users = self.session.query(UserOrmModel).all()
 
-        results = self.cursor.execute(stmt)
+        converted = map(user_model_to_user_entity, users)
 
-        return [User(**row) for row in results.fetchall()]
+        return list(converted)
 
-    def one(self, phone_number: str) -> User:
-        stmt = "SELECT * FROM User WHERE phone_number = ?"
+    def one(self, whatsapp_id: str) -> User:
+        user = (
+            self.session.query(UserOrmModel)
+            .where(UserOrmModel.whatsapp_id == whatsapp_id)
+            .one()
+        )
 
-        result = self.cursor.execute(stmt, (phone_number,))
+        return user_model_to_user_entity(user)
 
-        return User(**result.fetchone())
-
-    def exists(self, phone_number: str) -> bool:
-        try:
-            user = self.one(phone_number)
-
-        except (IntegrityError, TypeError):
-            return False
-
-        else:
-            return True
+    def exists(self, whatsapp_id: str) -> bool:
+        return self.session.scalar(
+            exists().where(UserOrmModel.whatsapp_id == whatsapp_id).select()
+        )
 
     def add(self, user: User) -> None:
-        if self.exists(phone_number=user.phone_number):
+        if self.exists(whatsapp_id=user.whatsapp_id):
             raise ValueError("User already exists")
 
-        stmt = "INSERT INTO User (phone_number, username) VALUES (?, ?)"
+        user_orm_model = user_entity_to_user_model(user)
 
-        self.cursor.execute(stmt, (user.phone_number, user.username))
-        self.connection.commit()
+        self.session.add(user_orm_model)
 
-    def delete(self, phone_number: str) -> None:
-        if self.exists(phone_number):
-            stmt = "DELETE FROM User WHERE phone_number=(?)"
-
-            self.cursor.execute(stmt, (phone_number,))
-            self.connection.commit()
-
-    def __del__(self) -> None:
-        self.cursor.close()
-        self.connection.close()
+    def delete_where(self, whatsapp_id: str) -> None:
+        if self.exists(whatsapp_id=whatsapp_id):
+            self.session.query(UserOrmModel).delete()

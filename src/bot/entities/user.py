@@ -1,7 +1,10 @@
 from dataclasses import dataclass
 
+from bot.value_objects.user_role import UserRole
+
 
 @dataclass(frozen=True)
 class User:
-    phone_number: str
+    role: UserRole
     username: str
+    whatsapp_id: str

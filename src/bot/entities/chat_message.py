@@ -1,9 +1,10 @@
 from dataclasses import dataclass
 
-from bot.value_objects.role import Role
+from bot.value_objects.message_role import MessageRole
 
 
 @dataclass(frozen=True)
 class ChatMessage:
-    role: Role
+    role: MessageRole
     content: str
+    user_id: str
